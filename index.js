@@ -4,14 +4,14 @@ import { io } from "socket.io-client";
 const API_TOKEN = process.env.FIREFLIES_API_TOKEN;
 
 // TEMP: Replace with your real transcript ID from Fireflies
-const TRANSCRIPT_ID = process.env.TRANSCRIPT_ID || "your-transcript-id-here";
+const MEETING_ID = process.env.TRANSCRIPT_ID || "your-transcript-id-here";
 
 // Connect to Fireflies Realtime API
 const socket = io("wss://api.fireflies.ai", {
   path: "/ws/realtime",
   auth: {
     token: `Bearer ${API_TOKEN}`,
-    transcriptId: TRANSCRIPT_ID,
+    meetingid: MEETING_ID,
   },
 });
 
