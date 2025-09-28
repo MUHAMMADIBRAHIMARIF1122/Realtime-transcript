@@ -6,12 +6,11 @@
   "scripts": {
     "start": "node index.js"
   },
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "socket.io-client": "^4.7.5",
     "node-fetch": "^3.3.2"
   }
 }
-
-
-
-
