@@ -1,16 +1,16 @@
-import express from "express";
-import fetch from "node-fetch";
+const express = require("express");
+const fetch = require("node-fetch");
 
 const app = express();
-app.use(express.json()); // we’ll use JSON body parser for the webhook
+app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
-const RECALL_REGION = "us-east-1"; // change if you’re using another region
+const RECALL_REGION = "us-east-1"; // change if using another Recall region
 const RECALL_API_KEY = process.env.RECALL_API_KEY;
 
-// ---------------
-// Start Recall Bot
-// ---------------
+// --------------------
+// 1. Start Recall Bot
+// --------------------
 app.post("/api/startRecall", async (req, res) => {
   try {
     const { zoomLink, externalId } = req.body;
@@ -36,7 +36,7 @@ app.post("/api/startRecall", async (req, res) => {
             {
               type: "webhook",
               url: "https://primary-production-bd4d.up.railway.app/webhook/Transcript",
-              events: ["transcript.data"], // ✅ only finalized transcripts
+              events: ["transcript.data"], // ✅ only finalized
             },
           ],
         },
@@ -46,18 +46,17 @@ app.post("/api/startRecall", async (req, res) => {
     const data = await botResp.json();
     return res.json(data);
   } catch (err) {
-    console.error("Error starting Recall bot:", err);
+    console.error("❌ Error starting Recall bot:", err);
     res.status(500).json({ error: "Failed to start bot" });
   }
 });
 
-// -------------------
-// Webhook for Recall.ai
-// -------------------
+// -----------------------
+// 2. Webhook for Recall.ai
+// -----------------------
 app.post("/webhook/Transcript", (req, res) => {
   const body = req.body;
 
-  // Real-time finalized transcript
   if (body.event === "transcript.data") {
     const words = body.data?.data?.words ?? [];
     const text = words.map((w) => w.text).join(" ").trim();
@@ -66,17 +65,16 @@ app.post("/webhook/Transcript", (req, res) => {
     console.log(`📝 ${speaker}: ${text}`);
   }
 
-  // When the meeting is done
   if (body.event === "bot.done") {
-    console.log("✅ Meeting finished, transcript ready for download. Bot ID:", body.data.bot.id);
+    console.log("✅ Meeting finished. Bot ID:", body.data.bot.id);
   }
 
   res.sendStatus(200);
 });
 
 // -------------------
-// Start server
+// 3. Start server
 // -------------------
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
