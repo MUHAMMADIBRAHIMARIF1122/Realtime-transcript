@@ -1,64 +1,115 @@
-import { io } from "socket.io-client";
-import fetch from "node-fetch"; // <--- ADD THIS
+const express = require("express");
+const fetch = require("node-fetch");
+const bodyParser = require("body-parser");
 
-// Replace with your actual Fireflies API token
-const API_TOKEN = process.env.FIREFLIES_API_TOKEN;
+const app = express();
+const port = process.env.PORT || 3000;
 
-// Replace with your real transcript ID from Fireflies
-const TRANSCRIPT_ID = process.env.TRANSCRIPT_ID || "your-transcript-id-here";
+app.use(bodyParser.json());
 
-// Your n8n webhook URL
-const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL;
-
-if (!API_TOKEN || !N8N_WEBHOOK_URL) {
-  console.error("❌ Missing required env variables");
-  process.exit(1);
-}
-
-// Connect to Fireflies Realtime API
-const socket = io("wss://api.fireflies.ai", {
-  path: "/ws/realtime",
-  auth: {
-    token: `Bearer ${API_TOKEN}`,
-    transcriptId: TRANSCRIPT_ID,
-  },
-});
-
-// ---- Event Listeners ----
-
-// Auth success/failure
-socket.on("auth.success", (data) => {
-  console.log("✅ Authenticated:", data);
-});
-socket.on("auth.failed", (err) => {
-  console.error("❌ Authentication failed:", err);
-});
-
-// Connection status
-socket.on("connection.established", () => {
-  console.log("🔗 Connection established with Fireflies Realtime API");
-});
-socket.on("connection.error", (err) => {
-  console.error("⚠️ Connection error:", err);
-});
-
-// Transcription events
-socket.on("transcription.broadcast", async (event) => {
-  console.log("📝 Transcript event:", event);
-
+/**
+ * 1. Start Recall bot
+ * Endpoint: POST /api/startRecall
+ * Body: { "zoomLink": "...", "externalId": "..." }
+ */
+app.post("/api/startRecall", async (req, res) => {
   try {
-    const res = await fetch(N8N_WEBHOOK_URL, {
+    const { zoomLink, externalId } = req.body;
+
+    const botResp = await fetch(`https://${process.env.RECALL_REGION}.recall.ai/api/v1/bot`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(event),
+      headers: {
+        Authorization: process.env.RECALL_API_KEY ?? "",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        meeting_url: zoomLink,
+        external_id: externalId,
+        metadata: { external_id: externalId },
+        webhook_url: "https://primary-production-bd4d.up.railway.app/webhook/Transcript",
+        recording_config: {
+          transcript: { provider: { meeting_captions: {} } },
+          realtime_endpoints: [
+            {
+              type: "webhook",
+              url: "https://primary-production-bd4d.up.railway.app/webhook/Transcript",
+              events: ["transcript.data"], // ✅ ONLY finalized transcript events
+            },
+          ],
+        },
+      }),
     });
 
-    if (!res.ok) {
-      console.error("❌ Failed to send to n8n:", res.status, await res.text());
-    } else {
-      console.log("✅ Sent transcript to n8n");
-    }
+    const data = await botResp.json();
+    res.json(data);
   } catch (err) {
-    console.error("❌ Error sending to n8n:", err);
+    console.error("Error starting bot:", err);
+    res.status(500).json({ error: "Failed to start bot" });
   }
 });
+
+/**
+ * 2. Webhook receiver
+ * Recall.ai will POST finalized transcript + status events here
+ */
+app.post("/webhook/Transcript", (req, res) => {
+  const body = req.body;
+
+  if (body.event === "transcript.data") {
+    console.log("✅ Final transcript chunk:", body.data.data.words);
+  }
+
+  if (body.event === "bot.done") {
+    console.log("🎉 Meeting finished! Transcript ready. botId:", body.data.bot.id);
+  }
+
+  res.sendStatus(200);
+});
+
+/**
+ * 3. Fetch full transcript after meeting
+ * Endpoint: GET /api/getTranscript/:botId
+ */
+app.get("/api/getTranscript/:botId", async (req, res) => {
+  try {
+    const botId = req.params.botId;
+
+    // Retrieve bot details
+    const botResp = await fetch(
+      `https://${process.env.RECALL_REGION}.recall.ai/api/v1/bot/${botId}/`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: process.env.RECALL_API_KEY ?? "",
+          Accept: "application/json",
+        },
+      }
+    );
+    const botData = await botResp.json();
+
+    // Find transcript download URL
+    const recordings = botData.recordings || [];
+    if (!recordings.length || !recordings[0].media_shortcuts?.transcript) {
+      return res.status(404).json({ error: "No transcript available yet" });
+    }
+
+    const downloadUrl = recordings[0].media_shortcuts.transcript.download_url;
+
+    // Download full transcript JSON
+    const transcriptResp = await fetch(downloadUrl, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${process.env.RECALL_API_KEY ?? ""}`,
+        Accept: "application/json",
+      },
+    });
+    const transcript = await transcriptResp.json();
+
+    res.json(transcript);
+  } catch (err) {
+    console.error("Error fetching transcript:", err);
+    res.status(500).json({ error: "Failed to fetch transcript" });
+  }
+});
+
+app.listen(port, () => console.log(`🚀 Server running on port ${port}`));
