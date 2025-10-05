@@ -31,7 +31,7 @@ app.post("/api/startRecall", async (req, res) => {
         metadata: { external_id: externalId },
         webhook_url: "https://primary-production-bd4d.up.railway.app/webhook/Transcript",
         recording_config: {
-          transcript: { provider: { meeting_captions: {} } },
+          transcript: { provider: { recallai_streaming: {} } },
           realtime_endpoints: [
             {
               type: "webhook",
