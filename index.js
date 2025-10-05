@@ -5,7 +5,7 @@ const app = express();
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
-const RECALL_REGION = "us-east-1"; // change if using another Recall region
+const RECALL_REGION = "us-west-2"; // change if using another Recall region
 const RECALL_API_KEY = process.env.RECALL_API_KEY;
 
 // --------------------
